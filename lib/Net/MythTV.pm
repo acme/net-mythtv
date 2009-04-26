@@ -2,9 +2,12 @@ package Net::MythTV;
 use Moose;
 use MooseX::StrictConstructor;
 use DateTime;
+use IO::File;
 use IO::Socket::INET;
+use Net::MythTV::Connection;
 use Net::MythTV::Recording;
-use Sys::Hostname;
+use Sys::Hostname qw();
+use URI;
 
 has 'hostname' => (
     is      => 'rw',
@@ -18,127 +21,104 @@ has 'port' => (
     default => 6543,
 );
 
-has 'socket' => (
+has 'connection' => (
     is       => 'rw',
-    isa      => 'IO::Socket::INET',
+    isa      => 'Net::MythTV::Connection',
     required => 0,
 );
 
 __PACKAGE__->meta->make_immutable;
 
-our $BACKEND_SEP = '[]:[]';
-
 sub BUILD {
     my $self = shift;
 
-    my $socket = IO::Socket::INET->new(
-        PeerAddr => $self->hostname,
-        PeerPort => $self->port,
-        Proto    => 'tcp',
-        Reuse    => 1,
-        Timeout  => 10,
-    ) || die $!;
-    $self->socket($socket);
-
-    my ( $proto_status, $proto_version )
-        = $self->send_command("MYTH_PROTO_VERSION 40");
-    confess("Wrong protocol version") unless $proto_status eq 'ACCEPT';
-
+    my $connection = Net::MythTV::Connection->new(
+        hostname => $self->hostname,
+        port     => $self->port,
+    );
     my ($ann_status)
-        = $self->send_command(
+        = $connection->send_command(
         'ANN Playback ' . Sys::Hostname::hostname . ' 0' );
     confess("Unable to announce") unless $ann_status eq 'OK';
-}
-
-sub DEMOLISH {
-    my $self = shift;
-    $self->send_data('DONE');
+    $self->connection($connection);
 }
 
 sub recordings {
-    my $self        = shift;
-    my @bits        = $self->send_command('QUERY_RECORDINGS Play');
+    my $self = shift;
+    my @bits = $self->connection->send_command('QUERY_RECORDINGS Play');
     my $nrecordings = shift @bits;
-my @recordings;
+    my @recordings;
     foreach my $i ( 1 .. $nrecordings ) {
         my @parts = splice( @bits, 0, 46 );
-#use YAML; die Dump \@parts;
-        my $title = $parts[0];
-my $channel = $parts[6];
-        my $url   = $parts[8];
-my $size = $parts[10];
-        my $start = DateTime->from_epoch( epoch => $parts[11] );
-        my $stop   = DateTime->from_epoch( epoch => $parts[12] );
+
+        #use YAML; die Dump \@parts;
+        my $title   = $parts[0];
+        my $channel = $parts[6];
+        my $url     = $parts[8];
+        my $size    = $parts[10];
+        my $start   = DateTime->from_epoch( epoch => $parts[11] );
+        my $stop    = DateTime->from_epoch( epoch => $parts[12] );
+
         # warn "$channel, $title $url $start - $stop ($size)\n";
-push @recordings, Net::MythTV::Recording->new(
-title => $title,
-channel => $channel,
-url => $url,
-size => $size,
-start => $start,
-stop => $stop,
-);
+        push @recordings,
+            Net::MythTV::Recording->new(
+            title   => $title,
+            channel => $channel,
+            url     => $url,
+            size    => $size,
+            start   => $start,
+            stop    => $stop,
+            );
+
         #use YAML; die Dump \@parts;
     }
 
     #die $nrecordings;
-return @recordings;
+    return @recordings;
 }
 
-sub send_command {
-    my ( $self, $command ) = @_;
-    $self->send_data($command);
-    my $response = $self->read_data;
-    warn "receiving [$response]\n";
-    return split '\[\]\:\[\]', $response;
-}
+sub download_recording {
+    my ( $self, $recording, $destination ) = @_;
+    my $command_connection = $self->connection;
 
-sub send_data {
-    my ( $self, $command ) = @_;
+    my $uri      = URI->new( $recording->url );
+    my $filename = $uri->path;
 
-   # The command format should be <length + whitespace to 8 total bytes><data>
-    my $data
-        = length($command)
-        . ' ' x ( 8 - length( length($command) ) )
-        . $command;
-    warn "sending [$data]\n";
-    $self->socket->print($data);
-}
+    my $fh = IO::File->new("> $destination") || die $!;
 
-sub read_data {
-    my $self   = shift;
-    my $socket = $self->socket;
+    my $data_connection = Net::MythTV::Connection->new(
+        hostname => $self->hostname,
+        port     => $self->port,
+    );
 
-    my $length;
+    my ( $ann_status, $socket_id, $zero, $total )
+        = $data_connection->send_command(
+        'ANN FileTransfer ' . Sys::Hostname::hostname . '[]:[]' . $filename );
+    confess("Unable to announce") unless $ann_status eq 'OK';
+    warn "$ann_status / $socket_id / $zero / $total";
 
-    # Read the response header to find out how much data we'll be grabbing
-    my $result = $socket->read( $length, 8 );
-    if ( !defined $result ) {
-        warn "Error reading from MythTV backend: $!\n";
-        return '';
-    } elsif ( $result == 0 ) {
+    my ( $seek_status1, $seek_status2 )
+        = $command_connection->send_command( 'QUERY_FILETRANSFER '
+            . $socket_id . '[]:[]' . 'SEEK' . '[]:[]' . '0' . '[]:[]'
+            . '0' );
+    confess("Unable to announce")
+        unless $seek_status1 == 0 && $seek_status2 == 0;
 
-        #warn "No data returned by MythTV backend.\n";
-        return '';
+    while ($total) {
+        my ($request_length)
+            = $command_connection->send_command( 'QUERY_FILETRANSFER '
+                . $socket_id . '[]:[]'
+                . 'REQUEST_BLOCK' . '[]:[]'
+                . 65535 );
+        last unless $request_length;
+        while ($request_length) {
+            my $bytes
+                = $data_connection->socket->read( my $buffer,
+                $request_length )
+                || die $!;
+            $fh->print($buffer) || die $!;
+            $request_length -= $bytes;
+        }
+        $total -= $request_length;
     }
-    $length = int($length);
-
-    # Read and return any data that was returned
-    my $ret;
-    my $data;
-    while ( $length > 0 ) {
-        my $bytes
-            = $socket->read( $data, ( $length < 262144 ? $length : 262144 ) );
-
-        # Error?
-        last unless ( defined $bytes );
-
-        # EOF?
-        last if ( $bytes < 1 );
-
-        # On to the next
-        $ret .= $data;
-        $length -= $bytes;
-    }
-    return $ret;
 }
