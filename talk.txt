@@ -1,0 +1,31 @@
+fewer cables
+
+television
+
+freeview
+
+mythtv
+
+frontend / backend
+
+frontend sucks for recording
+
+backend annoying to configure
+
+mythweb
+
+first try talking backend protocol
+
+protocol crackfuelled
+
+underdocumented
+
+two ports for data
+
+need to contact database to get details 
+
+libgmyth doesn't install for me
+
+mythweb
+
+wife broke keyboard
