@@ -3,6 +3,7 @@ use Moose;
 use MooseX::StrictConstructor;
 use DateTime;
 use IO::Socket::INET;
+use Net::MythTV::Recording;
 use Sys::Hostname;
 
 has 'hostname' => (
@@ -58,18 +59,30 @@ sub recordings {
     my $self        = shift;
     my @bits        = $self->send_command('QUERY_RECORDINGS Play');
     my $nrecordings = shift @bits;
+my @recordings;
     foreach my $i ( 1 .. $nrecordings ) {
         my @parts = splice( @bits, 0, 46 );
+#use YAML; die Dump \@parts;
         my $title = $parts[0];
+my $channel = $parts[6];
         my $url   = $parts[8];
+my $size = $parts[10];
         my $start = DateTime->from_epoch( epoch => $parts[11] );
-        my $end   = DateTime->from_epoch( epoch => $parts[12] );
-        warn "$title $url $start - $end\n";
-
+        my $stop   = DateTime->from_epoch( epoch => $parts[12] );
+        # warn "$channel, $title $url $start - $stop ($size)\n";
+push @recordings, Net::MythTV::Recording->new(
+title => $title,
+channel => $channel,
+url => $url,
+size => $size,
+start => $start,
+stop => $stop,
+);
         #use YAML; die Dump \@parts;
     }
 
     #die $nrecordings;
+return @recordings;
 }
 
 sub send_command {
