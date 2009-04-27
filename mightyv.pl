@@ -22,6 +22,31 @@ my $datetime_parser = DateTime::Format::Strptime->new(
 my $ua = LWP::UserAgent->new;
 $ua->default_header( 'Accept-Language' => 'en' );
 
+# <a title="Details for: BBC ONE" href="/mythweb/tv/channel/1001/1240863300">
+my $list_response = $ua->get("$host/mythweb/tv/list");
+die $list_response->status_line unless $list_response->is_success;
+
+my $ltree = HTML::TreeBuilder::XPath->new;
+$ltree->parse_content( $list_response->content );
+
+my %channel_ids;
+foreach my $child ( $ltree->findnodes('//a') ) {
+    my $href = $child->attr('href');
+    next unless $href;
+    next unless $href =~ m{/mythweb/tv/channel/};
+
+    my $url = URI->new( $host . $href );
+    my ( undef, undef, undef, undef, $channel_id, $start_time ) = split '/',
+        $url->path;
+
+    my $text = $child->as_text;
+    $text =~ s/^ +//;
+    $text =~ s/^\d+ //;
+    $text =~ s/ +$//;
+    say "$channel_id $text";
+    $channel_ids{$text} = $channel_id;
+}
+
 my $response = $ua->get("$host/mythweb/tv/upcoming");
 die $response->status_line unless $response->is_success;
 
