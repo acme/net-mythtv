@@ -6,6 +6,7 @@ use DateTime;
 use DateTime::Format::Strptime;
 use HTML::TreeBuilder;
 use HTML::TreeBuilder::XPath;
+use JSON::XS::VersionOneAndTwo;
 use LWP::UserAgent;
 use Perl6::Say;
 use URI;
@@ -46,6 +47,14 @@ foreach my $child ( $ltree->findnodes('//a') ) {
     say "$channel_id $text";
     $channel_ids{$text} = $channel_id;
 }
+
+my $json_response = $ua->get('http://www.mightyv.com/feed/schedule/acme/json');
+die $json_response->status_line unless $json_response->is_success;
+my @events = @{ from_json($json_response->content) };
+
+
+
+exit;
 
 my $response = $ua->get("$host/mythweb/tv/upcoming");
 die $response->status_line unless $response->is_success;
