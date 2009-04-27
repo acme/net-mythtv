@@ -1,28 +1,23 @@
 #!/home/acme/perl-5.10.0/bin/perl
 use strict;
 use warnings;
-use LWP::Simple;
+use DateTime;
 use HTML::TreeBuilder;
 use HTML::TreeBuilder::XPath;
+use LWP::UserAgent;
 use Perl6::Say;
-use Date::Manip;
-use DateTime::Format::Strptime;
 use URI;
 
 my $host = 'http://owl.local';
 
-# Apr 26, 2009 (10:30 AM)
-my $parser = DateTime::Format::Strptime->new(
-    pattern   => '%b %d, %Y (%I:%M %p)',
-    locale    => 'en_GB',
-    time_zone => 'Europe/London',
-    on_error  => 'croak',
-);
+my $ua = LWP::UserAgent->new;
+$ua->default_header( 'Accept-Language' => 'en' );
 
-my $html = get("$host/mythweb/tv/recorded");
+my $response = $ua->get("$host/mythweb/tv/recorded");
+die $response->status_line unless $response->is_success;
 
 my $ntree = HTML::TreeBuilder::XPath->new;
-$ntree->parse_content($html);
+$ntree->parse_content( $response->content );
 
 my ($table) = $ntree->findnodes('id("recorded_list")');
 foreach my $child ( $table->content_list ) {
@@ -31,32 +26,31 @@ foreach my $child ( $table->content_list ) {
     next unless $id;
     my ($type) = $id =~ /^(.+)_/;
     my @tds = $child->content_list;
-    if ( $type eq 'breakrow' ) {
-    } elsif ( $type eq 'inforow' ) {
-        my $pixmap = $tds[1];
-        my $url = URI->new( [ $pixmap->content_list ]->[4]->attr('href') );
-        my ( undef, undef, undef, undef, $channel_id, $start_time )
-            = split '/', $url->path;
+    next unless $type eq 'inforow';
+    my $pixmap = $tds[1];
+    my $url = URI->new( [ $pixmap->content_list ]->[4]->attr('href') );
+    my ( undef, undef, undef, undef, $channel_id, $start_time ) = split '/',
+        $url->path;
 
-        my $title    = $tds[2]->as_text;
-        my $airdate  = $tds[5]->as_text;
-        my $dt       = $parser->parse_datetime($airdate);
-        my $filename = $title . ' ' . $dt . '.mpg';
-        $filename =~ s{[^a-zA-Z0-9.]}{_}g;
-        $filename = '/home/acme/Public/tv/' . $filename;
+    my $title   = $tds[2]->as_text;
+    my $actions = $tds[9]->as_text;
+    next if $actions =~ /Still Recording/;
 
-        next if -f $filename;
+    my $dt = DateTime->from_epoch( epoch => $start_time );
+    my $filename = $title . ' ' . $dt . '.mpg';
+    $filename =~ s{[^a-zA-Z0-9.]}{_}g;
+    $filename = '/home/acme/Public/tv/' . $filename;
 
-        say "$url -> $filename";
-        mirror( $url, $filename );
-        my $delete_url
-            = "$host/mythweb/tv/recorded?delete=yes&chanid=$channel_id&starttime=$start_time";
-        say $delete_url;
-        get($delete_url);
+    next if -f $filename;
 
-    } elsif ( $type eq 'statusrow' ) {
-    }
+    say "$url -> $filename";
+    my $mirror_response = $ua->get( $url, ':content_file' => $filename );
+    die $mirror_response->status_line unless $mirror_response->is_success;
+
+    my $delete_url
+        = "$host/mythweb/tv/recorded?delete=yes&chanid=$channel_id&starttime=$start_time";
+    say $delete_url;
+    my $delete_response = $ua->get($delete_url);
+    die $delete_response->status_line unless $delete_response->is_success;
 }
 
-#warn $table->dump;
-#warn $table->as_text;
