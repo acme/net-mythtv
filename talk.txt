@@ -4,6 +4,8 @@ television
 
 freeview
 
+eyetv -> usb stick
+
 mythtv
 
 frontend / backend
@@ -27,5 +29,11 @@ need to contact database to get details
 libgmyth doesn't install for me
 
 mythweb
+
+scraping
+
+modern scraping
+
+parse dates, look at urls
 
 wife broke keyboard
