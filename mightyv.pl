@@ -3,10 +3,13 @@ use strict;
 use warnings;
 use Date::Manip;
 use DateTime;
+use DateTime::Format::ISO8601;
 use DateTime::Format::Strptime;
 use HTML::TreeBuilder;
 use HTML::TreeBuilder::XPath;
 use JSON::XS::VersionOneAndTwo;
+use Lingua::EN::Numbers qw(num2en);
+use List::Util qw(first);
 use LWP::UserAgent;
 use Perl6::Say;
 use URI;
@@ -48,11 +51,28 @@ foreach my $child ( $ltree->findnodes('//a') ) {
     $channel_ids{$text} = $channel_id;
 }
 
-my $json_response = $ua->get('http://www.mightyv.com/feed/schedule/acme/json');
+my $json_response
+    = $ua->get('http://www.mightyv.com/feed/schedule/acme/json');
 die $json_response->status_line unless $json_response->is_success;
-my @events = @{ from_json($json_response->content) };
-
-
+my @events = @{ from_json( $json_response->content ) };
+foreach my $event (@events) {
+    my $start = DateTime::Format::ISO8601->parse_datetime( $event->{start} )->set_time_zone('UTC')
+        ->set_time_zone('Europe/London');
+    my $start_epoch = $start->epoch;
+    my $channel          = $event->{name};
+    my $matching_channel = first {
+        my $a = lc $channel;
+        $a =~ s/ //g;
+        $a =~ s/(\d+)/num2en($1)/e;
+        my $b = lc $_;
+        $b =~ s/ //g;
+        $b =~ s/(\d+)/num2en($1)/e;
+        $a eq $b;
+    }
+    keys %channel_ids;
+    my $channel_id = $channel_ids{$matching_channel};
+    say $event->{start} . " $start $channel $matching_channel $channel_id $host/mythweb/tv/detail/$channel_id/$start_epoch";
+}
 
 exit;
 
