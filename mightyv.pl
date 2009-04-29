@@ -10,7 +10,7 @@ use HTML::TreeBuilder::XPath;
 use JSON::XS::VersionOneAndTwo;
 use Lingua::EN::Numbers qw(num2en);
 use List::Util qw(first);
-use LWP::UserAgent;
+use WWW::Mechanize;
 use Perl6::Say;
 use URI;
 use URI::QueryParam;
@@ -23,15 +23,16 @@ my $datetime_parser = DateTime::Format::Strptime->new(
     on_error => 'croak',
 );
 
-my $ua = LWP::UserAgent->new;
-$ua->default_header( 'Accept-Language' => 'en' );
+my $mech = WWW::Mechanize->new;
+$mech->default_header( 'Accept-Language' => 'en' );
 
 # <a title="Details for: BBC ONE" href="/mythweb/tv/channel/1001/1240863300">
-my $list_response = $ua->get("$host/mythweb/tv/list");
+$mech->get("$host/mythweb/tv/list");
+my $list_response = $mech->response;
 die $list_response->status_line unless $list_response->is_success;
 
 my $ltree = HTML::TreeBuilder::XPath->new;
-$ltree->parse_content( $list_response->content );
+$ltree->parse_content( $list_response->decoded_content );
 
 my %channel_ids;
 foreach my $child ( $ltree->findnodes('//a') ) {
@@ -51,14 +52,15 @@ foreach my $child ( $ltree->findnodes('//a') ) {
     $channel_ids{$text} = $channel_id;
 }
 
-my $json_response
-    = $ua->get('http://www.mightyv.com/feed/schedule/acme/json');
+$mech->get('http://www.mightyv.com/feed/schedule/acme/json');
+my $json_response = $mech->response;
 die $json_response->status_line unless $json_response->is_success;
-my @events = @{ from_json( $json_response->content ) };
+my @events = @{ from_json( $json_response->decoded_content ) };
 foreach my $event (@events) {
-    my $start = DateTime::Format::ISO8601->parse_datetime( $event->{start} )->set_time_zone('UTC')
-        ->set_time_zone('Europe/London');
-    my $start_epoch = $start->epoch;
+    my $start = DateTime::Format::ISO8601->parse_datetime( $event->{start} )
+        ->set_time_zone('Europe/London')->set_time_zone('UTC');
+
+    my $start_epoch      = $start->epoch;
     my $channel          = $event->{name};
     my $matching_channel = first {
         my $a = lc $channel;
@@ -71,12 +73,20 @@ foreach my $event (@events) {
     }
     keys %channel_ids;
     my $channel_id = $channel_ids{$matching_channel};
-    say $event->{start} . " $start $channel $matching_channel $channel_id $host/mythweb/tv/detail/$channel_id/$start_epoch";
+    my $url        = "$host/mythweb/tv/detail/$channel_id/$start_epoch";
+    say $event->{start}
+        . " $start $channel $matching_channel $channel_id $url";
+    $mech->get($url);
+    $mech->submit_form(
+        form_name => 'program_detail',
+        fields    => { record => 1, },
+        button    => 'save',
+    );
 }
 
 exit;
 
-my $response = $ua->get("$host/mythweb/tv/upcoming");
+my $response = $mech->get("$host/mythweb/tv/upcoming");
 die $response->status_line unless $response->is_success;
 
 my $ntree = HTML::TreeBuilder::XPath->new;
