@@ -39,7 +39,7 @@ foreach my $child ( $table->content_list ) {
     my $dt = DateTime->from_epoch( epoch => $start_time );
     my $filename = $title . ' ' . $dt . '.mpg';
     $filename =~ s{[^a-zA-Z0-9.]}{_}g;
-    $filename = '/home/acme/Public/tv/' . $filename;
+    $filename = '/media/disk/tv/' . $filename;
 
     next if -f $filename;
 
