@@ -5,6 +5,7 @@ use Date::Manip;
 use DateTime;
 use DateTime::Format::ISO8601;
 use DateTime::Format::Strptime;
+use DateTime::SpanSet;
 use HTML::TreeBuilder;
 use HTML::TreeBuilder::XPath;
 use JSON::XS::VersionOneAndTwo;
@@ -48,7 +49,7 @@ foreach my $child ( $ltree->findnodes('//a') ) {
     $text =~ s/^ +//;
     $text =~ s/^\d+ //;
     $text =~ s/ +$//;
-    say "$channel_id $text";
+
     $channel_ids{$text} = $channel_id;
 }
 
@@ -59,6 +60,10 @@ my @events = @{ from_json( $json_response->decoded_content ) };
 foreach my $event (@events) {
     my $start = DateTime::Format::ISO8601->parse_datetime( $event->{start} )
         ->set_time_zone('Europe/London')->set_time_zone('UTC');
+    my $stop
+        = DateTime::Format::ISO8601->parse_datetime( $event->{stop} )
+        ->set_time_zone('Europe/London')->set_time_zone('UTC')
+        ->subtract( seconds => 1 );
 
     my $start_epoch      = $start->epoch;
     my $channel          = $event->{name};
@@ -74,13 +79,72 @@ foreach my $event (@events) {
     keys %channel_ids;
     my $channel_id = $channel_ids{$matching_channel};
     my $url        = "$host/mythweb/tv/detail/$channel_id/$start_epoch";
-    say $event->{start}
-        . " $start $channel $matching_channel $channel_id $url";
+    $event->{url}      = $url;
+    $event->{start_dt} = $start;
+    $event->{stop_dt}  = $stop;
+}
+
+my $spanset = DateTime::SpanSet->from_spans( spans => [] );
+
+foreach my $event (@events) {
+    my $url   = $event->{url};
+    my $start = $event->{start_dt};
+    my $stop  = $event->{stop_dt};
+    my $span  = DateTime::Span->from_datetimes(
+        start => $start,
+        end   => $stop,
+    );
+    if ( $spanset->intersects($span) ) {
+        say "clash!";
+        next;
+    } else {
+        $spanset = $spanset->union($span);
+        $event->{span} = $span;
+    }
+}
+
+foreach my $event (@events) {
+    my $url   = $event->{url};
+    my $start = $event->{start_dt};
+    my $stop  = $event->{stop_dt};
+    my $span  = $event->{span};
+    my $title = $event->{title};
+
+    $spanset = $spanset->complement($span);
+
+    my $final_span
+        = first { !$spanset->intersects($_) } DateTime::Span->from_datetimes(
+        start => $start->clone->subtract( minutes => 5 ),
+        end   => $stop->clone->add( minutes       => 5 )
+        ),
+        DateTime::Span->from_datetimes(
+        start => $start->clone->subtract( minutes => 5 ),
+        end   => $stop
+        ),
+        DateTime::Span->from_datetimes(
+        start => $start,
+        end   => $stop->clone->add( minutes => 5 )
+        ), $span;
+
+    $spanset = $spanset->union($final_span);
+
+    my $startoffset = ( $final_span->start - $span->start )->minutes;
+    my $endoffset   = ( $final_span->end - $span->end )->minutes;
+
+    say "$title "
+        . $final_span->start . ' -> '
+        . $final_span->end
+        . " ($startoffset, $endoffset)";
+
     $mech->get($url);
     $mech->submit_form(
         form_name => 'program_detail',
-        fields    => { record => 1, },
-        button    => 'save',
+        fields    => {
+            record      => 1,
+            startoffset => $startoffset,
+            endoffset   => $endoffset,
+        },
+        button => 'save',
     );
 }
 
@@ -102,8 +166,10 @@ foreach my $child ( $table->content_list ) {
     my $airdate_dt = $datetime_parser->parse_datetime($airdate);
     my ($actions)  = $tds[6]->content_list;
     my $url        = URI->new( $host . $actions->attr('href') );
-    die "Missing dontrec field" unless $url->query_param('dontrec') eq 'yes';
-    my ( undef, undef, undef, undef, $channel_id, $start_time ) = split '/',
+    die "Missing dontrec field"
+        unless $url->query_param('dontrec') eq 'yes';
+    my ( undef, undef, undef, undef, $channel_id, $start_time )
+        = split '/',
         $url->path;
     my $dt
         = DateTime->from_epoch( epoch => $start_time )->set_time_zone('UTC')
