@@ -102,7 +102,13 @@ sub download_recording {
         = $data_connection->send_command(
         'ANN FileTransfer ' . Sys::Hostname::hostname . '[]:[]' . $filename );
     confess("Unable to announce") unless $ann_status eq 'OK';
-    warn "$ann_status / $socket_id / $zero / $total";
+
+    # work around unsigned/signed bug for files bigger than 2GB
+    if ( $total < 0 ) {
+        $total = unpack( 'L', pack( 'l', $total ) );
+    }
+
+    # warn "$ann_status / $socket_id / $zero / $total";
 
     my ( $seek_status1, $seek_status2 )
         = $command_connection->send_command( 'QUERY_FILETRANSFER '
@@ -117,15 +123,20 @@ sub download_recording {
                 . $socket_id . '[]:[]'
                 . 'REQUEST_BLOCK' . '[]:[]'
                 . 65535 );
+
+        # warn "$total ($request_length)";
         last unless $request_length;
-        while ($request_length) {
+        my $read = 0;
+        while ( $read < $request_length ) {
             my $bytes
                 = $data_connection->socket->read( my $buffer,
                 $request_length )
                 || die $!;
             $fh->print($buffer) || die $!;
-            $request_length -= $bytes;
+            $read += $bytes;
+
+            # warn "read $bytes";
         }
-        $total -= $request_length;
+        $total -= $read;
     }
 }
