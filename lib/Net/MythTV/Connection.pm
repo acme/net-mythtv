@@ -16,8 +16,8 @@ has 'port' => (
 );
 
 has 'socket' => (
-    is       => 'rw',
-    isa      => 'IO::Socket::INET',
+    is  => 'rw',
+    isa => 'IO::Socket::INET',
 );
 
 __PACKAGE__->meta->make_immutable;
@@ -103,3 +103,27 @@ sub read_data {
     }
     return $ret;
 }
+
+__END__
+
+=head1 NAME
+
+Net::MythTV::Connection - A MythTV connection
+
+=head1 SEE ALSO
+
+L<Net::MythTV>, L<Net::MythTV::Recording>.
+
+=head1 AUTHOR
+
+Leon Brocard <acme@astray.com>.
+
+=head1 COPYRIGHT
+
+Copyright (C) 2009, Leon Brocard
+
+=head1 LICENSE
+
+This module is free software; you can redistribute it or modify it
+under the same terms as Perl itself.
+
