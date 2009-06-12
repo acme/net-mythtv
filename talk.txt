@@ -6,6 +6,8 @@ freeview
 
 eyetv -> usb stick
 
+mac and xbox -> mac mini
+
 mythtv
 
 frontend / backend
@@ -26,6 +28,10 @@ two ports for data
 
 need to contact database to get details 
 
+fields []:[] delimited
+
+negative sizes
+
 libgmyth doesn't install for me
 
 mythweb
@@ -37,3 +43,13 @@ modern scraping
 parse dates, look at urls
 
 wife broke keyboard
+
+gold cables versus cables from ebay
+
+HD content diagram from bbc tech blog
+
+mythtv is not tivo
+
+quotes from being digital
+
+
