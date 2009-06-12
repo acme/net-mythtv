@@ -24,8 +24,8 @@ has 'port' => (
 );
 
 has 'connection' => (
-    is       => 'rw',
-    isa      => 'Net::MythTV::Connection',
+    is  => 'rw',
+    isa => 'Net::MythTV::Connection',
 );
 
 __PACKAGE__->meta->make_immutable;
@@ -52,13 +52,19 @@ sub recordings {
     foreach my $i ( 1 .. $nrecordings ) {
         my @parts = splice( @bits, 0, 46 );
 
-        #use YAML; die Dump \@parts;
+        # use YAML; die Dump \@parts;
         my $title   = $parts[0];
         my $channel = $parts[6];
         my $url     = $parts[8];
         my $size    = $parts[10];
-        my $start   = DateTime->from_epoch( epoch => $parts[11] );
-        my $stop    = DateTime->from_epoch( epoch => $parts[12] );
+
+        # work around unsigned/signed bug for files bigger than 2GB
+        if ( $size < 0 ) {
+            $size = unpack( 'L', pack( 'l', $size ) );
+        }
+
+        my $start = DateTime->from_epoch( epoch => $parts[11] );
+        my $stop  = DateTime->from_epoch( epoch => $parts[12] );
 
         # warn "$channel, $title $url $start - $stop ($size)\n";
         push @recordings,
