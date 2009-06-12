@@ -110,6 +110,14 @@ __END__
 
 Net::MythTV::Connection - A MythTV connection
 
+=head1 METHODS
+
+=head2 read_data
+
+=head2 send_command
+
+=head2 send_data
+
 =head1 SEE ALSO
 
 L<Net::MythTV>, L<Net::MythTV::Recording>.
