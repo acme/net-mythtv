@@ -18,7 +18,6 @@ has 'port' => (
 has 'socket' => (
     is       => 'rw',
     isa      => 'IO::Socket::INET',
-    required => 0,
 );
 
 __PACKAGE__->meta->make_immutable;
