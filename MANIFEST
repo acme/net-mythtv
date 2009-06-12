@@ -1,3 +1,4 @@
+CHANGES
 lib/Net/MythTV.pm
 lib/Net/MythTV/Connection.pm
 lib/Net/MythTV/Recording.pm
