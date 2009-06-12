@@ -26,7 +26,6 @@ has 'port' => (
 has 'connection' => (
     is       => 'rw',
     isa      => 'Net::MythTV::Connection',
-    required => 0,
 );
 
 __PACKAGE__->meta->make_immutable;
