@@ -9,6 +9,8 @@ use Net::MythTV::Recording;
 use Sys::Hostname qw();
 use URI;
 
+our $VERSION = '0.33';
+
 has 'hostname' => (
     is      => 'rw',
     isa     => 'Str',
